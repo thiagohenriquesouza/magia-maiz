@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Descubra a carta de tarô que representa o seu jeito de cuidar de cada cliente." />
+    <meta name="theme-color" content="#100c24" />
+    <title>Sua Carta de Hoje</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=Italiana&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <div class="sky" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span></div>
+
+    <main class="shell">
+      <header class="brand" aria-label="Sua Carta de Hoje">
+        <span class="brand-mark" aria-hidden="true">✦</span>
+        <span>Sua Carta de Hoje</span>
+      </header>
+
+      <section class="intro">
+        <p class="eyebrow">Um ritual para começar o atendimento</p>
+        <h1>Qual energia você leva para o seu cliente hoje?</h1>
+        <p class="intro-copy">Conte sua intenção e receba uma carta única para representar esse encontro.</p>
+      </section>
+
+      <section class="experience" aria-label="Gerador de carta de tarô">
+        <form class="form-card" id="tarot-form">
+          <div class="field-row">
+            <label>
+              <span>Seu nome</span>
+              <input id="name" name="name" type="text" placeholder="Como podemos te chamar?" autocomplete="name" required />
+            </label>
+            <label>
+              <span>Seu e-mail</span>
+              <input id="email" name="email" type="email" placeholder="voce@exemplo.com" autocomplete="email" required />
+            </label>
+          </div>
+
+          <label>
+            <span>O que você vai fazer pelo cliente hoje?</span>
+            <textarea id="intention" name="intention" rows="4" maxlength="180" placeholder="Ex.: Vou ouvir com atenção e transformar uma dúvida em um caminho claro." required></textarea>
+            <small><span id="char-count">0</span>/180</small>
+          </label>
+
+          <div class="upload-wrap">
+            <span class="field-title">Sua foto</span>
+            <label class="upload" for="photo">
+              <input id="photo" name="photo" type="file" accept="image/png,image/jpeg,image/webp" required />
+              <span class="photo-preview" id="photo-preview" aria-hidden="true">✦</span>
+              <span class="upload-copy">
+                <strong id="upload-title">Escolha uma foto</strong>
+                <small id="upload-help">JPG, PNG ou WebP · até 8 MB</small>
+              </span>
+              <span class="upload-action">Selecionar</span>
+            </label>
+          </div>
+
+          <button class="primary-button" type="submit">
+            <span>Revelar minha carta</span>
+            <span aria-hidden="true">✦</span>
+          </button>
+          <p class="privacy">Sua foto é usada apenas nesta simulação e não sai do seu dispositivo.</p>
+        </form>
+
+        <aside class="preview-panel" aria-live="polite">
+          <div class="preview-copy" id="preview-copy">
+            <span class="mini-orbit" aria-hidden="true">☾</span>
+            <p>Sua intenção se transforma em símbolo, cor e mensagem.</p>
+          </div>
+
+          <div class="loading-state" id="loading-state" hidden>
+            <div class="orbital-loader" aria-hidden="true"><span>✦</span></div>
+            <h2>As cartas estão se alinhando…</h2>
+            <p id="loading-message">Lendo a energia da sua intenção</p>
+          </div>
+
+          <div class="result-state" id="result-state" hidden>
+            <p class="result-kicker">Sua carta foi revelada</p>
+            <canvas id="tarot-canvas" width="720" height="1200" aria-label="Sua carta personalizada de tarô"></canvas>
+            <div class="result-actions">
+              <button class="download-button" id="download-button" type="button">Baixar minha carta <span aria-hidden="true">↓</span></button>
+              <button class="text-button" id="restart-button" type="button">Criar outra</button>
+            </div>
+          </div>
+        </aside>
+      </section>
+    </main>
+
+    <footer><span>✦</span> Feito para encontros que deixam marca <span>✦</span></footer>
+    <script src="/script.js"></script>
+  </body>
+</html>
