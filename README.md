@@ -1,19 +1,27 @@
-# Sua Carta de Hoje
+# Magia
 
-Protótipo estático de uma experiência que cria uma carta de tarô personalizada a partir do nome, intenção de atendimento e foto da pessoa.
+Aplicação mobile-first para criação de cartas personalizadas com foto, integrada à OpenAI e à infraestrutura da Vercel.
 
-## Rodar localmente
-
-Abra `index.html` com um servidor estático. Por exemplo:
+## Desenvolvimento
 
 ```bash
-npx serve .
+npm install
+copy .env.example .env.local
+npm run dev
 ```
 
-## Publicar no Vercel
+A experiência em português fica em `/` e a versão em espanhol em `/es`.
 
-Conecte este repositório ao Vercel. O projeto não exige comando de build nem diretório de saída: é um site estático pronto para publicação.
+## Infraestrutura
 
-## Integrações futuras
+- Next.js na Vercel;
+- OpenAI Image API executada somente no servidor;
+- Vercel Blob público com retenção aproximada de duas horas;
+- Postgres para eventos operacionais sem dados pessoais;
+- Vercel Cron para limpeza periódica dos arquivos.
 
-O ponto de integração está no envio do formulário em `script.js`. A simulação atual pode ser substituída por uma chamada a uma API/LLM e o canvas por uma imagem retornada pelo backend.
+Execute `scripts/schema.sql` no banco antes da publicação. Configure as variáveis descritas em `.env.example` no projeto da Vercel.
+
+## Privacidade
+
+Nome, foto e resposta são mantidos apenas durante a geração. Os eventos armazenados contêm somente data, idioma, tipo do evento e Unidade de Negócio quando aplicável.

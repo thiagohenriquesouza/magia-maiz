@@ -1,4 +1,8 @@
 {
-  "cleanUrls": true,
-  "trailingSlash": false
+  "crons": [
+    {
+      "path": "/api/cron/cleanup",
+      "schedule": "15 */2 * * *"
+    }
+  ]
 }
