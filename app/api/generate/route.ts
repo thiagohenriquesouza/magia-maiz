@@ -3,7 +3,7 @@ import { put } from "@vercel/blob";
 import OpenAI, { toFile } from "openai";
 import { NextResponse } from "next/server";
 import { ACCEPTED_IMAGE_TYPES, BUSINESS_UNITS, MAX_INTENTION_LENGTH, MAX_PHOTO_BYTES, type Locale } from "@/lib/config";
-import { recordEvent } from "@/lib/server/db";
+import { recordEvent, recordImageGeneration } from "@/lib/server/db";
 import { cleanText, containsBlockedTheme, getAnonymousRequestKey, isRateLimited } from "@/lib/server/security";
 
 export const runtime = "nodejs";
@@ -54,18 +54,24 @@ export async function POST(request: Request) {
 
     try {
       const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-      const response = await openai.images.edit(
+      const model = process.env.OPENAI_IMAGE_MODEL ?? "gpt-image-2.5-flare";
+      const quality = "medium";
+      const imageSize = "1024x1536";
+      const outputFormat = "webp";
+      const startedAt = Date.now();
+      const { data: response, request_id: openaiRequestId } = await openai.images.edit(
         {
-          model: process.env.OPENAI_IMAGE_MODEL ?? "gpt-image-2.5-sunburst",
+          model,
           image: await toFile(bytes, "portrait.webp", { type: photo.type }),
           prompt: `${basePrompt}\n\n${userDirection}`,
-          quality: "medium",
-          size: "1024x1536",
-          output_format: "webp",
+          quality,
+          size: imageSize,
+          output_format: outputFormat,
           output_compression: 82
         },
         { signal: controller.signal }
-      );
+      ).withResponse();
+      const latencyMs = Date.now() - startedAt;
 
       const encoded = response.data?.[0]?.b64_json;
       if (!encoded) return error("generation_failed", 502);
@@ -80,7 +86,31 @@ export async function POST(request: Request) {
       });
 
       try {
-        await recordEvent("image_generated", locale, businessUnit);
+        const usage = response.usage;
+        const textInputTokens = usage?.input_tokens_details?.text_tokens ?? 0;
+        const imageInputTokens = usage?.input_tokens_details?.image_tokens ?? 0;
+        const imageOutputTokens = usage?.output_tokens_details?.image_tokens ?? usage?.output_tokens ?? 0;
+        const totalTokens = usage?.total_tokens ?? textInputTokens + imageInputTokens + imageOutputTokens;
+
+        await Promise.all([
+          recordEvent("image_generated", locale, businessUnit),
+          recordImageGeneration({
+            locale,
+            businessUnit,
+            model,
+            quality,
+            imageSize,
+            outputFormat,
+            promptVersion: process.env.PROMPT_VERSION ?? "encantador-test-v1",
+            openaiRequestId: openaiRequestId ?? undefined,
+            latencyMs,
+            textInputTokens,
+            imageInputTokens,
+            imageOutputTokens,
+            totalTokens,
+            estimatedCostMicroUsd: textInputTokens * 5 + imageInputTokens * 8 + imageOutputTokens * 30
+          })
+        ]);
       } catch {
         // Operational analytics must never turn a successful generation into an error.
       }
