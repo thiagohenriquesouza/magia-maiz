@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent, type PointerEvent as ReactPointerEvent } from "react";
-import { ACCEPTED_IMAGE_TYPES, BUSINESS_UNITS, MAX_INTENTION_LENGTH, MAX_PHOTO_BYTES, type Locale } from "@/lib/config";
+import { ACCEPTED_IMAGE_TYPES, BUSINESS_UNITS, MAX_INTENTION_LENGTH, MAX_PHOTO_BYTES, NORMALIZED_PHOTO_QUALITY, NORMALIZED_PHOTO_SIZE, type Locale } from "@/lib/config";
 import { getCopy } from "@/lib/i18n";
 
 type GenerationState = "idle" | "validating" | "uploading" | "generating" | "storing" | "ready" | "error";
 type CropState = { source: string; image: HTMLImageElement; zoom: number; x: number; y: number };
+type DragState = { pointerId: number; startX: number; startY: number; originX: number; originY: number; canvasScale: number };
 
 export function Experience({ locale }: { locale: Locale }) {
   const t = getCopy(locale);
@@ -21,7 +22,7 @@ export function Experience({ locale }: { locale: Locale }) {
   const [attempts, setAttempts] = useState(0);
   const [imageError, setImageError] = useState("");
   const [formDataSnapshot, setFormDataSnapshot] = useState<FormData | null>(null);
-  const [drag, setDrag] = useState<{ pointerId: number; startX: number; startY: number; originX: number; originY: number } | null>(null);
+  const [drag, setDrag] = useState<DragState | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
   const termsRef = useRef<HTMLDialogElement>(null);
@@ -56,16 +57,28 @@ export function Experience({ locale }: { locale: Locale }) {
     };
   }, [state, t.loading.length]);
 
-  function onPhotoSelected(event: ChangeEvent<HTMLInputElement>) {
+  async function onPhotoSelected(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     event.target.value = "";
     setImageError("");
-    if (!file || !ACCEPTED_IMAGE_TYPES.includes(file.type) || file.size > MAX_PHOTO_BYTES) {
+    if (!file || !isAcceptedPhoto(file) || file.size > MAX_PHOTO_BYTES) {
       setImageError(t.invalidImage);
       return;
     }
 
-    const source = URL.createObjectURL(file);
+    let displayBlob: Blob = file;
+    try {
+      if (isHeic(file)) {
+        const { default: heic2any } = await import("heic2any");
+        const converted = await heic2any({ blob: file, toType: "image/jpeg", quality: NORMALIZED_PHOTO_QUALITY });
+        displayBlob = Array.isArray(converted) ? converted[0] : converted;
+      }
+    } catch {
+      setImageError(t.invalidImage);
+      return;
+    }
+
+    const source = URL.createObjectURL(displayBlob);
     const image = new Image();
     image.onload = () => {
       setCrop({ source, image, zoom: 1, x: 0, y: 0 });
@@ -84,28 +97,19 @@ export function Experience({ locale }: { locale: Locale }) {
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
     const size = canvas.width;
-    const base = Math.max(size / crop.image.width, size / crop.image.height);
-    const scale = base * crop.zoom;
-    const width = crop.image.width * scale;
-    const height = crop.image.height * scale;
-    const maxX = Math.max(0, (width - size) / 2);
-    const maxY = Math.max(0, (height - size) / 2);
-    const offsetX = Math.max(-maxX, Math.min(maxX, crop.x));
-    const offsetY = Math.max(-maxY, Math.min(maxY, crop.y));
-
-    ctx.clearRect(0, 0, size, size);
-    ctx.drawImage(crop.image, (size - width) / 2 + offsetX, (size - height) / 2 + offsetY, width, height);
+    drawCrop(ctx, crop, size, 1);
   }
 
   function onPointerDown(event: ReactPointerEvent<HTMLCanvasElement>) {
     if (!crop) return;
     event.currentTarget.setPointerCapture(event.pointerId);
-    setDrag({ pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, originX: crop.x, originY: crop.y });
+    const rect = event.currentTarget.getBoundingClientRect();
+    setDrag({ pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, originX: crop.x, originY: crop.y, canvasScale: event.currentTarget.width / rect.width });
   }
 
   function onPointerMove(event: ReactPointerEvent<HTMLCanvasElement>) {
     if (!crop || !drag || drag.pointerId !== event.pointerId) return;
-    setCrop({ ...crop, x: drag.originX + event.clientX - drag.startX, y: drag.originY + event.clientY - drag.startY });
+    setCrop({ ...crop, x: drag.originX + (event.clientX - drag.startX) * drag.canvasScale, y: drag.originY + (event.clientY - drag.startY) * drag.canvasScale });
   }
 
   function onPointerUp() {
@@ -115,15 +119,26 @@ export function Experience({ locale }: { locale: Locale }) {
   function confirmCrop() {
     const canvas = canvasRef.current;
     if (!canvas || !crop) return;
-    canvas.toBlob((blob) => {
+    const outputSize = Math.max(1, Math.min(NORMALIZED_PHOTO_SIZE, Math.floor(Math.min(crop.image.naturalWidth, crop.image.naturalHeight))));
+    const output = document.createElement("canvas");
+    output.width = outputSize;
+    output.height = outputSize;
+    const context = output.getContext("2d");
+    if (!context) return;
+    drawCrop(context, crop, outputSize, outputSize / canvas.width);
+    output.toBlob((blob) => {
       if (!blob) return;
-      const nextPhoto = new File([blob], "portrait.webp", { type: "image/webp" });
+      if (blob.size > MAX_PHOTO_BYTES) {
+        setImageError(t.invalidImage);
+        return;
+      }
+      const nextPhoto = new File([blob], "portrait.jpg", { type: "image/jpeg" });
       setPhoto(nextPhoto);
       if (photoPreview) URL.revokeObjectURL(photoPreview);
       setPhotoPreview(URL.createObjectURL(blob));
       URL.revokeObjectURL(crop.source);
       setCrop(null);
-    }, "image/webp", .9);
+    }, "image/jpeg", NORMALIZED_PHOTO_QUALITY);
   }
 
   function cancelCrop() {
@@ -249,11 +264,11 @@ export function Experience({ locale }: { locale: Locale }) {
               <div className="photo-ready">
                 <img src={photoPreview} alt="" />
                 <div><strong>{t.photoReady}</strong><small>{t.photoHelp}</small></div>
-                <label className="small-action">{t.cropCancel}<input type="file" accept="image/jpeg,image/png,image/webp" onChange={onPhotoSelected} disabled={isBusy} /></label>
+                <label className="small-action">{t.cropCancel}<input type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif" onChange={onPhotoSelected} disabled={isBusy} /></label>
               </div>
             ) : (
               <div className="photo-actions">
-                <label className="photo-action"><span aria-hidden="true">▧</span>{t.choosePhoto}<input type="file" accept="image/jpeg,image/png,image/webp" onChange={onPhotoSelected} disabled={isBusy} /></label>
+                <label className="photo-action"><span aria-hidden="true">▧</span>{t.choosePhoto}<input type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif" onChange={onPhotoSelected} disabled={isBusy} /></label>
                 <label className="photo-action"><span aria-hidden="true">◉</span>{t.takePhoto}<input type="file" accept="image/*" capture="user" onChange={onPhotoSelected} disabled={isBusy} /></label>
               </div>
             )}
@@ -351,4 +366,26 @@ export function Experience({ locale }: { locale: Locale }) {
 
 function wait(ms: number) {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+function isHeic(file: File) {
+  return ["image/heic", "image/heif"].includes(file.type) || /\.(heic|heif)$/i.test(file.name);
+}
+
+function isAcceptedPhoto(file: File) {
+  return ACCEPTED_IMAGE_TYPES.includes(file.type) || isHeic(file);
+}
+
+function drawCrop(context: CanvasRenderingContext2D, crop: CropState, size: number, offsetScale: number) {
+  const base = Math.max(size / crop.image.naturalWidth, size / crop.image.naturalHeight);
+  const scale = base * crop.zoom;
+  const width = crop.image.naturalWidth * scale;
+  const height = crop.image.naturalHeight * scale;
+  const maxX = Math.max(0, (width - size) / 2);
+  const maxY = Math.max(0, (height - size) / 2);
+  const offsetX = Math.max(-maxX, Math.min(maxX, crop.x * offsetScale));
+  const offsetY = Math.max(-maxY, Math.min(maxY, crop.y * offsetScale));
+
+  context.clearRect(0, 0, size, size);
+  context.drawImage(crop.image, (size - width) / 2 + offsetX, (size - height) / 2 + offsetY, width, height);
 }
